@@ -72,3 +72,4 @@ int main(int argc, char* argv[]) {
     inf.readEof(); // 必须以 EOF 断言收尾
     return 0;
 }
+```
