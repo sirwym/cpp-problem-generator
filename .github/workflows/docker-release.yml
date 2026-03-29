@@ -1,0 +1,39 @@
+name: Build Two Separate Docker Images
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 安装 QEMU 用于模拟 arm64 环境
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      # 1. 构建 amd64 镜像
+      - name: Build amd64 image
+        run: |
+          docker build --platform linux/amd64 -t cpp-sandbox:amd64 .
+          docker save -o cpp-sandbox-amd64.tar cpp-sandbox:amd64
+
+      # 2. 构建 arm64 镜像
+      - name: Build arm64 image
+        run: |
+          docker build --platform linux/arm64 -t cpp-sandbox:arm64 .
+          docker save -o cpp-sandbox-arm64.tar cpp-sandbox:arm64
+
+      # 3. 发布两个 tar 文件
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            cpp-sandbox-amd64.tar
+            cpp-sandbox-arm64.tar
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

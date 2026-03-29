@@ -94,7 +94,11 @@ def main():
         sys.exit(1)
 
     gen_cpp, valid_cpp, std_cpp, problem_md = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
-    
+    gen_cpp = sys.argv[1].replace('\\', '/')
+    valid_cpp = sys.argv[2].replace('\\', '/')
+    std_cpp = sys.argv[3].replace('\\', '/')
+    problem_md = sys.argv[4].replace('\\', '/')
+
     # 【核心修复】：解析不定长参数，实现不均匀分配
     if len(sys.argv) > 5:
         try:

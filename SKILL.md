@@ -1,7 +1,7 @@
 ---
 name: cpp-problem-generator
 description: 基于原题生成新题面、验证器及完整测试数据，自动套用 testlib 标准模板。 当用户要求生成测试数据时使用。
-version: 2.2.0
+version: 1.0.0
 trigger: "@cpp-problem-generator"
 ---
 
@@ -12,6 +12,25 @@ trigger: "@cpp-problem-generator"
 基于用户提供的原题目描述和标准程序代码（std.cpp），生成一套全新的类似题目及其完整的测试数据。所有数据的生成和验证逻辑必须基于 `testlib.h` 标准进行，并严格符合 CSP-J/S 及 NOIP 等主流信息学竞赛的出题规范。
 
 # 执行步骤 (Action SOP)
+
+**Step 0: 运行前环境自检与引导 (Pre-flight Check)**
+在开始任何代码生成和文件落地之前，你必须在宿主机终端执行以下检查流程：
+
+1. **检查 Docker 状态**：
+   执行命令：`docker info`。
+   - 如果命令报错，请停止执行，并提示用户：“⚠️ 您的电脑未运行 Docker Desktop。请先安装并启动它。”
+
+2. **检查沙箱镜像是否就绪**：
+   执行命令：`docker images -q cpp-sandbox`。
+   - 如果输出为空，说明用户的电脑上还没有沙箱环境。请**停止出题流程**，并向用户输出以下提示：
+     > “🚀 检测到您尚未加载出题专用的 Docker 沙箱镜像。”
+     > “请先从 [这里填写你的网盘链接或GitHub Release链接] 下载 `cpp-sandbox.tar` 文件。”
+     > “下载完成后，请在文件所在的目录下，在终端运行以下命令导入镜像：”
+     > `docker load -i cpp-sandbox.tar`
+     > “导入成功后，请对我说‘已加载’，我们将继续出题！”
+
+3. 只有上述检查全部通过（即沙箱镜像已存在），才能进入后续的 Step 1 出题流程。
+
 
 **Step 1: 提取参数与规划数据梯度**
 - 提取用户消息中的【题目描述】、【标准程序代码 (std.cpp)】以及【子任务(Subtask)和测试点数量】。若未明确指定数量，默认设定为 3 个 Subtask，10 个测试点。
@@ -47,19 +66,22 @@ trigger: "@cpp-problem-generator"
 **Step 3: 落地工作区**
 在用户的当前工作区中创建一个临时目录（如 `problem_temp/`），并将生成的 `gen.cpp`、`valid.cpp`、`std.cpp` 和新题面 `problem.md` 分别保存为本地文件。
 
-**Step 4: 触发自动构建流水线**
+**Step 4: 触发自动构建流水线 (Docker 沙箱执行)**
 在终端中执行以下 Shell 命令调用本地自动化构建脚本。
+- **【沙箱执行铁律】**：为了系统安全，**严禁直接在宿主机调用 `python3`**。你必须使用 `docker run` 命令将当前目录挂载到 `cpp-sandbox` 容器内执行。
+- **【路径传参铁律】**：传入的文件路径**必须使用正斜杠 `/`**（例如 `problem_temp/gen.cpp`），绝对禁止使用 Windows 的反斜杠 `\`，因为脚本将在 Linux 容器内解析。
 - **【命令传参铁律】**：你必须将规划的每个 Subtask 的测试点数量作为**不定长参数**依次添加在命令末尾。例如默认的 4、3、3 分配，必须传入 `4 3 3`。
-- **【脚本行为预期】**：执行该命令后，脚本会自动读取 `problem.md` 中的标签，并最终在工作区根目录生成 ZIP 打包文件和 `meta.json`。
-```bash
-python3 scripts/generate.py <gen_cpp文件路径> <valid_cpp文件路径> <std_cpp文件路径> <problem_md文件路径> 4 3 3
+
+在 PowerShell 中执行以下标准化命令（注意 `${PWD}` 是 PowerShell 挂载当前目录的正确语法）：
+```powershell
+docker run --rm -v "${PWD}:/data" -w /data cpp-sandbox python3 scripts/generate.py <gen_cpp文件路径> <valid_cpp文件路径> <std_cpp文件路径> <problem_md文件路径> 4 3 3
 ```
 
 **Step 5: 验证与反思 (闭环纠错)**
-检查脚本在终端返回的 JSON 结果。
-- **【常规报错拦截与跨平台铁律】**：如果发生编译报错或数据校验失败，自行分析终端的 stderr 报错信息，直接修改本地临时目录中的对应代码并重新执行 Step 4。**注意：当前宿主机的终端是 Windows PowerShell，排错调查时绝对禁止使用 `head`、`cat`、`tail`、`grep` 等 Linux/Unix 独有命令！**（如需查看文件，请使用 PowerShell 原生的 `Get-Content` 或直接读取文件内容）。
-- **排错绝对铁律 (信任 Validator，质疑 Generator)**：如果发生数据校验失败（如 EOF 报错或越界），绝对禁止通过删除 `inf.readEoln()` 或简化逻辑来削弱 `valid.cpp` 强行通过。校验失败 99% 意味着 `gen.cpp` 的数学逻辑有误（例如生成的边数与声明的 $m$ 不等）。你必须去反思并修复 `gen.cpp`，坚决捍卫 Validator 的严格性。
-- **严禁绕过流水线**：遇到 `scripts/generate.py` 报错时，优先分析并修复脚本本身或生成器代码，严禁私自编写临时的一次性 Python 脚本来绕过核心构建流程。
-- **超时与资源耗尽反思**：如果终端返回“生成器崩溃/超时”或“标程运行失败/超时”，必须反思是否生成了超大规模的数据导致 OOM（内存溢出），或者是图/树的生成逻辑陷入了死循环，并对本地代码进行针对性降级或修复，然后重新执行 Step 4。
+检查 Docker 容器在终端返回的 JSON 结果。
+- **【常规报错拦截与跨平台铁律】**：如果发生编译报错或数据校验失败，自行分析终端的 stderr 报错信息。请注意，报错信息是由容器内的 Linux GCC 产生的。分析完毕后，直接修改本地临时目录中的对应代码并重新执行 Step 4。
+- **【排错工具铁律】**：宿主机是 Windows PowerShell，排错调查时绝对禁止使用 `head`、`cat`、`tail`、`grep` 等 Linux 独有命令！如需查看文件，请使用原生命令 `Get-Content`。
+- **排错绝对铁律 (信任 Validator，质疑 Generator)**：如果发生数据校验失败（如 EOF 报错或越界），绝对禁止通过删除 `inf.readEoln()` 或简化逻辑来削弱 `valid.cpp` 强行通过。你必须去反思并修复 `gen.cpp`，坚决捍卫 Validator 的严格性。
+- **严禁绕过流水线**：遇到报错时，优先分析并修复脚本本身或生成器代码，严禁私自编写临时的一次性 Python 脚本来绕过核心构建流程。
 - **【防死锁熔断机制】**：如果针对同一个题目的同一种报错连续修复超过 5 次仍未解决，请立即停止重试，并向用户输出 `[FAIL-SAFE] 题目生成陷入死锁，需人工介入` 及最后的报错日志。
-- **汇报与输出**：若终端返回成功，最终的 ZIP 压缩包和 `meta.json` 会生成在当前工作区根目录下，底层的 Python 脚本会自动销毁 `problem_temp/` 临时目录。你只需向用户输出该 ZIP 文件的绝对路径，并提示流程完成即可。
+- **汇报与输出**：若终端返回成功，最终的 ZIP 压缩包和 `meta.json` 会通过挂载卷安全生成在当前工作区根目录下，底层的 Python 脚本会自动销毁 `problem_temp/` 临时目录。你只需向用户输出该 ZIP 文件的绝对路径，并提示流程完成即可。
