@@ -27,6 +27,47 @@ def compile_cpp(src_path, output_exe, include_path="."):
     except Exception as e:
         return False, str(e)
 
+def process_samples(problem_md_path, valid_exe, std_exe, run_kwargs, tmpdir):
+    """扫描 Markdown 中的样例输入，调用校验器和标程，动态计算并替换输出占位符"""
+    if not os.path.exists(problem_md_path):
+        return
+
+    with open(problem_md_path, 'r', encoding='utf-8') as f:
+        content = f.read()
+
+    # 提取所有 ```input\n内容\n``` 的代码块
+    inputs = re.findall(r'```input\n(.*?)\n```', content, re.DOTALL)
+    
+    for i, inp_text in enumerate(inputs, start=1):
+        placeholder = f"{{{{SAMPLE_OUT_{i}}}}}"
+        # 如果题面里没有对应的占位符，跳过
+        if placeholder not in content:
+            continue
+
+        in_file = os.path.join(tmpdir, f"sample_temp_{i}.in")
+        with open(in_file, 'w', encoding='utf-8') as f:
+            f.write(inp_text)
+
+        # 1. 喂给 valid 校验输入合法性
+        with open(in_file, 'r') as fin:
+            v_res = subprocess.run([valid_exe], stdin=fin, capture_output=True, **run_kwargs)
+            if v_res.returncode != 0:
+                raise Exception(f"AI 编造的样例输入 {i} 格式不合法，未通过校验器:\n{v_res.stderr or v_res.stdout}")
+
+        # 2. 喂给 std 计算真实输出
+        with open(in_file, 'r') as fin:
+            s_res = subprocess.run([std_exe], stdin=fin, capture_output=True, **run_kwargs)
+            if s_res.returncode != 0:
+                raise Exception(f"标程运行 AI 样例 {i} 时崩溃:\n{s_res.stderr}")
+
+        # 3. 替换占位符
+        out_text = s_res.stdout.strip()
+        content = content.replace(placeholder, out_text)
+
+    # 写回文件
+    with open(problem_md_path, 'w', encoding='utf-8') as f:
+        f.write(content)
+
 def build_fps_xml_and_meta(archive_dir, testdata_dir, problem_md_path, std_cpp_path, total_cases, zip_filename):
     """提取标签，构建 FPS XML 并在工作区生成 meta.json"""
 
@@ -179,7 +220,38 @@ def main():
                             return
                     idx += 1
 
+            student_dir = os.path.join(archive_dir, "student_downloads")
+            os.makedirs(student_dir, exist_ok=True)
+            
+            # 策略：前2组调用 Subtask 1 生成小数据，第3组调用最后一个 Subtask 生成大数据
+            student_tasks = [
+                (1, 1), # (Subtask编号, 文件编号)
+                (1, 2),
+                (len(subtask_distribution), 3) 
+            ]
+
+            for s_id, file_idx in student_tasks:
+                s_in = os.path.join(student_dir, f"sample_test_{file_idx}.in")
+                s_out = os.path.join(student_dir, f"sample_test_{file_idx}.out")
+                
+                # 为防止随机种子与线上数据冲突，给 tc 传参加一个偏移量(如 100)
+                with open(s_in, 'w') as fin:
+                    res = subprocess.run([gen_exe, str(s_id), str(file_idx + 100)], stdout=fin, stderr=subprocess.PIPE, **run_kwargs)
+                    if res.returncode != 0:
+                        raise Exception(f"生成线下学生数据(输入)失败: {res.stderr}")
+                with open(s_in, 'r') as fin, open(s_out, 'w') as fout:
+                    res = subprocess.run([std_exe], stdin=fin, stdout=fout, stderr=subprocess.PIPE, **run_kwargs)
+                    if res.returncode != 0:
+                        raise Exception(f"生成线下学生数据(输出)失败: {res.stderr}")    
+
+
             zip_filename = f"problem_package_{os.urandom(4).hex()}"
+            
+            try:
+                process_samples(os.path.join(archive_dir, "problem.md"), valid_exe, std_exe, run_kwargs, tmpdir)
+            except Exception as e:
+                print(json.dumps({"status": "error", "message": str(e)}))
+                return
 
             build_fps_xml_and_meta(
                 archive_dir=archive_dir,
