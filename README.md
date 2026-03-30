@@ -2,9 +2,9 @@
 
 > **AI 驱动的 C++ 算法竞赛题目与测试数据生成工具**
 
-[!\[License\](https://img.shields.io/badge/license-MIT-blue.svg null)](LICENSE)
-[!\[Docker\](https://img.shields.io/badge/docker-supported-blue.svg null)](https://www.docker.com/)
-[!\[testlib\](https://img.shields.io/badge/testlib-v0.9.41-green.svg null)](https://github.com/MikeMirzayanov/testlib)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Docker](https://img.shields.io/badge/docker-supported-blue.svg)](https://www.docker.com/)
+[![testlib](https://img.shields.io/badge/testlib-v0.9.41-green.svg)](https://github.com/MikeMirzayanov/testlib)
 
 ## 项目简介
 
@@ -16,6 +16,7 @@
 - 🛡️ **Docker 沙盒**：提供安全的 C++ 编译运行环境，避免本地环境配置问题
 - 📚 **testlib 标准**：严格遵循 Codeforces 官方 testlib.h 标准，确保数据质量
 - 📦 **一键打包**：自动生成 FPS 标准格式 ZIP 包，包含题面、源码和测试数据
+- 🔧 **丰富模板**：内置多种数据结构生成器和校验器模板
 
 ## 环境准备
 
@@ -138,6 +139,10 @@ A: 确保 Docker 正在运行，并且您有足够的磁盘空间。如果问题
 ### Q: 生成的测试数据质量如何？
 
 A: 本工具使用 testlib.h 标准库生成数据，确保数据符合竞赛标准，包括边界情况和极限数据。
+
+### Q: 如何修改生成器模板？
+
+A: 如果您需要修改生成器模板，请参考开发者指南，clone 仓库后修改 `references/templates/generators/` 目录中的对应文件。
 
 ## 许可证
 
