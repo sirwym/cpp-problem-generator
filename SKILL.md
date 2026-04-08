@@ -1,7 +1,7 @@
 ---
 name: cpp-problem-generator
 description: 基于原题生成新题面、验证器及完整测试数据，自动套用 testlib 标准模板。 当用户要求生成测试数据时使用。
-version: 1.2.0
+version: 1.2.1
 trigger: "@cpp-problem-generator"
 ---
 
@@ -18,7 +18,8 @@ trigger: "@cpp-problem-generator"
 
 1. **检查 Docker 状态**：
    执行命令：`docker info`。
-   - 如果命令报错，请停止执行，并提示用户：“⚠️ 您的电脑未运行 Docker Desktop。请先安装并启动它。”
+   - 如果检测到未运行，且你在 macOS 环境尝试了 `open -a Docker` 唤醒引擎，你**必须**在开始轮询等待前，先向用户输出提示：“⏳ 正在为您启动 Docker 容器引擎，由于冷启动需要约 15~30 秒，请稍作等待...”。然后再执行 `for...sleep` 轮询。
+   - 如果环境无法自动唤醒，请停止执行，并提示用户：“⚠️ 您的电脑未运行 Docker Desktop。请手动启动它后回复我‘已启动’。”
 
 2. **检查沙箱镜像是否就绪**：
    执行命令：`docker images -q cpp-sandbox:latest`。
@@ -62,9 +63,8 @@ trigger: "@cpp-problem-generator"
   - **题面洗稿铁律**：绝对禁止在标题和背景故事中使用原题的任何名词。你必须严格按照 Step 1 中确定好的背景主题（用户指定的，或是从 backgrounds.md 中随机抽取的）进行彻底的场景重构！必须确保原题的数学和算法逻辑与新设定的世界观严丝合缝地贴合（例如：最短路对应航道跃迁，背包对应收集物资等）。
   - **规范排版**：必须严格遵循标准算法竞赛排版风格，包含以下板块：**【题目背景】**（可选）、**【题目描述】**、**【输入格式】**、**【输出格式】**、**【样例及解释】**、**【数据规模与约定】**。
   - **LaTeX 规范**：所有变量名、数字、数学公式必须使用 LaTeX 语法包裹（例如 $N$，$1 \le N \le 10^5$）。
-  - **【样例动态生成铁律】**：**严禁自行计算样例输出！** 你必须在题面中写出 1~2 组极小且符合题目约束的合法输入数据（使用 ```input 包裹）。在对应的输出区块中，**必须且只能填入占位符 `{{SAMPLE_OUT_1}}`**（如果有第二个样例就是 `{{SAMPLE_OUT_2}}`，使用 ```output 包裹）。
-    - 注意 1：虽然你不需要算输出，但你必须在【样例解释】中，基于你自己刚才写的输入数据，用文字清晰地推演计算过程！
-    - 注意 2：底层的 Python 脚本会自动抓取你的输入，丢给校验器和标程去跑，并最终替换掉这些占位符，如果你的输入格式不合法，将会被系统报错打回。
+  - **【样例继承铁律】**：**严禁自行编造或计算新的样例数据！严禁使用任何占位符！** 你必须**原封不动**地将用户提供的原题中的【样例输入】和【样例输出】复制到新题面 `problem.md` 的对应区块中（使用 `input` 和 `output` 包裹）。
+    - **注意**：虽然样例的数字和结构保持不变，但由于你已经根据背景盲盒重构了世界观，你必须在【样例解释】中，用**全新的背景故事和名词**来解释这组原本的数字（例如：原题是 3 个苹果，新背景是星际战舰，你就要解释为 3 艘星际战舰如何进行调度），确保逻辑自洽！
   - **明确时空限制与得分**：给出明确的时间和空间限制建议，并在【数据规模与约定】中用表格或列表清晰说明每个 Subtask 的得分与具体数据范围。
   - **【知识点标签强制输出】**：你必须提取原题的核心算法与数据结构。若用户未提供，你必须自行推断出 1-3 个核心知识点标签（例如：动态规划、树、线段树优化、DFS等）。并**严格在 `problem.md` 文件的最末尾**，单独另起一行，以这种精确的格式输出（注意是中文冒号，标签间用逗号隔开）：
     【知识点标签】: 标签1, 标签2, 标签3
@@ -72,15 +72,18 @@ trigger: "@cpp-problem-generator"
 **Step 3: 落地工作区**
 在用户的当前工作区中创建一个临时目录（如 `problem_temp/`），并将生成的 `gen.cpp`、`valid.cpp`、`std.cpp` 和新题面 `problem.md` 分别保存为本地文件。
 
-**Step 4: 触发自动构建流水线 (Docker 沙箱执行)**
+**Step 4: 触发自动构建流水线 (Docker 沙箱双卷挂载执行)**
 在终端中执行以下 Shell 命令调用本地自动化构建脚本。
-- **【沙箱执行铁律】**：为了系统安全，**严禁直接在宿主机调用 `python3`**。你必须使用 `docker run` 命令将当前目录挂载到 `cpp-sandbox` 容器内执行。
-- **【路径传参铁律】**：传入的文件路径**必须使用正斜杠 `/`**，绝对禁止使用 Windows 的反斜杠 `\`。
-- **【命令传参铁律】**：你必须将规划的每个 Subtask 的测试点数量作为**不定长参数**依次添加在命令末尾（例如 `4 3 3`）。
+- **【沙箱执行铁律】**：严禁直接在宿主机调用 `python3`，必须使用 `docker run`。
+- **【双卷挂载铁律】**：必须同时挂载“当前出题工作区”和“本技能的 scripts 目录”。由于容器内路径映射，执行的 Python 脚本路径固定为 `/scripts/generate.py`，且必须在命令中带上编译所需的文件路径和不定长测试点参数。
 
-根据宿主机操作系统的不同，执行挂载当前目录的 Docker 命令：
-- 若为 Windows (PowerShell): `docker run --rm -v "${PWD}:/data" -w /data cpp-sandbox python3 scripts/generate.py <gen> <valid> <std> <problem> 4 3 3`
-- 若为 Linux/Mac (Bash/Zsh): `docker run --rm -v "$PWD:/data" -w /data cpp-sandbox python3 scripts/generate.py <gen> <valid> <std> <problem> 4 3 3`
+根据宿主机操作系统的不同，执行以下命令：
+- 若为 Windows (PowerShell): 
+  `docker run --rm -v "${PWD}:/data" -v "$env:USERPROFILE\.workbuddy\skills\cpp_up\scripts:/scripts:ro" -w /data cpp-sandbox python3 /scripts/generate.py problem_temp/gen.cpp problem_temp/valid.cpp problem_temp/std.cpp problem_temp/problem.md 4 3 3`
+- 若为 Linux/Mac (Bash/Zsh): 
+  `docker run --rm -v "$PWD:/data" -v "$HOME/.workbuddy/skills/cpp_up/scripts:/scripts:ro" -w /data cpp-sandbox python3 /scripts/generate.py problem_temp/gen.cpp problem_temp/valid.cpp problem_temp/std.cpp problem_temp/problem.md 4 3 3`
+
+- **后续清理**：只要终端返回 JSON 包含 "status": "success"，说明 ZIP 已经安全生成在工作区根目录。此时你可以执行 `rm -rf problem_temp` (Mac/Linux) 或 `Remove-Item -Recurse -Force problem_temp` (Windows) 清理临时源码。
 
 **Step 5: 验证与反思 (闭环纠错)**
 检查 Docker 容器在终端返回的 JSON 结果。
@@ -90,6 +93,3 @@ trigger: "@cpp-problem-generator"
 - **严禁绕过流水线**：遇到报错时，优先分析并修复脚本本身或生成器代码，严禁私自编写临时的一次性 Python 脚本来绕过核心构建流程。
 - **【防死锁熔断机制】**：如果针对同一个题目的同一种报错连续修复超过 5 次仍未解决，请立即停止重试，并向用户输出 `[FAIL-SAFE] 题目生成陷入死锁，需人工介入` 及最后的报错日志。
 - **汇报与输出**：若终端返回成功，最终的 ZIP 压缩包和 `meta.json` 会通过挂载卷安全生成在当前工作区根目录下，底层的 Python 脚本会自动销毁 `problem_temp/` 临时目录。你只需向用户输出该 ZIP 文件的绝对路径，并提示流程完成即可。
-- **【样例拦截处理铁律】**：如果终端报错提示类似“AI 编造的样例输入格式不合法，未通过校验器”，这说明你在 `problem.md` 中手写的 ```input 样例数据违反了题目本身的约束（例如数字越界、缺少行末换行符、图不连通等）。
-  - **纠错动作**：**绝对禁止**去修改 `valid.cpp` 放宽条件！你必须重新审视并修改你的 `problem.md`，重新编造一组完全符合 `valid.cpp` 严格规则的合法输入数据。
-  - **联动重写铁律**：**由于你的输入数据发生了改变，你必须在 `problem.md` 中同步重写对应的【样例解释】，确保文字推演过程与新的输入数据完全吻合！** 完成后再次执行构建流水线。
